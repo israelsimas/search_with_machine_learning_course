@@ -6,11 +6,16 @@ import os
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from collections import Counter
+import nltk
+from nltk.tokenize import word_tokenize
 
+
+nltk.download('punkt')
 
 def transform_name(product_name):
-    # IMPLEMENT
-    return product_name
+    product_name = product_name.lower()
+    tokens = word_tokenize(product_name)
+    return " ".join(tokens)
 
 # Directory for product data
 directory = r'/workspace/datasets/product_data/products/'
