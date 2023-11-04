@@ -6,7 +6,7 @@ usage()
 }
 
 SOURCE_DIR="/workspace/search_with_machine_learning_course"
-WEEK="week2"
+WEEK="week3"
 OUTPUT_DIR="/workspace/ltr_output"
 ALL_CLICKS_FILE="/workspace/datasets/train.csv"
 SPLIT_TRAIN_ROWS=1000000

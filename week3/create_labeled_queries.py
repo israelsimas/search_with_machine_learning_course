@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 import pandas as pd
 import numpy as np
 import csv
+import re
 
 # Useful if you want to perform stemming.
 import nltk
@@ -16,14 +17,12 @@ output_file_name = r'/workspace/datasets/fasttext/labeled_queries.txt'
 
 parser = argparse.ArgumentParser(description='Process arguments.')
 general = parser.add_argument_group("general")
-general.add_argument("--min_queries", default=1,  help="The minimum number of queries per category label (default is 1)")
+general.add_argument("--min_queries", default=1000, type=int, help="The minimum number of queries per category label (default is 1)")
 general.add_argument("--output", default=output_file_name, help="the file to output to")
 
 args = parser.parse_args()
 output_file_name = args.output
-
-if args.min_queries:
-    min_queries = int(args.min_queries)
+min_queries = args.min_queries
 
 # The root category, named Best Buy with id cat00000, doesn't have a parent.
 root_category_id = 'cat00000'
@@ -48,9 +47,31 @@ parents_df = pd.DataFrame(list(zip(categories, parents)), columns =['category', 
 queries_df = pd.read_csv(queries_file_name)[['category', 'query']]
 queries_df = queries_df[queries_df['category'].isin(categories)]
 
-# IMPLEMENT ME: Convert queries to lowercase, and optionally implement other normalization, like stemming.
+def normalize_query(query: str):
+    norm_query = query.lower()
+    norm_query = re.sub(r'[^a-zA-Z0-9]', ' ', norm_query)
+    norm_query = re.sub(r'\s+', ' ', norm_query).strip()
+    norm_query = ' '.join([stemmer.stem(token) for token in norm_query.split()])
+    return norm_query
 
-# IMPLEMENT ME: Roll up categories to ancestors to satisfy the minimum number of queries per category.
+queries_df['query'] = queries_df['query'].apply(normalize_query)
+
+# Roll up categories to ancestors to satisfy the minimum number of queries per category.
+counts_cat = queries_df.groupby('category')['query'].count().reset_index() # https://stackoverflow.com/questions/39778686/pandas-reset-index-after-groupby-value-counts
+while True:
+    threshold_cat = counts_cat[counts_cat['query'] < min_queries]
+    if threshold_cat.shape[0] == 0:
+        break
+
+    valid_cat = threshold_cat.loc[threshold_cat['query'].idxmin()]['category']
+    parent = parents_df[parents_df['category'] == valid_cat]['parent'].values[0]
+
+    counts_cat.loc[counts_cat['category'] == parent, 'query'] += counts_cat.loc[
+    counts_cat['category'] == valid_cat, 'query'].values[0]
+
+    queries_df.loc[queries_df['category'] == valid_cat, 'category'] = parent
+    queries_df = queries_df[queries_df['category'] != valid_cat]
+    counts_cat = counts_cat[counts_cat['category'] != valid_cat]
 
 # Create labels in fastText format.
 queries_df['label'] = '__label__' + queries_df['category']
