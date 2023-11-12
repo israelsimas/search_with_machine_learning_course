@@ -20,10 +20,10 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 logging.basicConfig(format='%(levelname)s:%(message)s')
 
-# IMPLEMENT ME: import the sentence transformers module!
+from sentence_transformers import SentenceTransformer
 
 logger.info("Creating Model")
-# IMPLEMENT ME: instantiate the sentence transformer model!
+embedding_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 
 # NOTE: this is not a complete list of fields.  If you wish to add more, put in the appropriate XPath expression.
 #TODO: is there a way to do this using XPath/XSL Functions so that we don't have to maintain a big list?
@@ -106,6 +106,15 @@ def get_opensearch():
     )
     return client
 
+def enrich(docs):
+    def get_name(doc_source):
+        if isinstance(doc_source['name'], str):
+            return doc_source['name']
+        return '|'.join(doc_source['name'])
+    embeddings = embedding_model.encode([get_name(doc['_source']) for doc in docs])
+    assert len(embeddings) == len(docs)
+    for doc, embedding in zip(docs, embeddings):
+        doc['_source']['name_embedding'] = embedding.tolist()
 
 def index_file(file, index_name, reduced=False):
     logger.info("Ready to index")
@@ -117,12 +126,6 @@ def index_file(file, index_name, reduced=False):
     root = tree.getroot()
     children = root.findall("./product")
     docs = []
-    names = []
-    # IMPLEMENT ME: maintain the names array parallel to docs,
-    # and then embed them in bulk and add them to each doc,
-    # in the '_source' part of each docs entry, before calling bulk
-    # to index them 200 at a time. Make sure to clear the names array
-    # when you clear the docs array!
     for child in children:
         doc = {}
         for idx in range(0, len(mappings), 2):
@@ -140,12 +143,17 @@ def index_file(file, index_name, reduced=False):
         #docs.append({'_index': index_name, '_source': doc})
         docs_indexed += 1
         if docs_indexed % 200 == 0:
+            logger.info("Embedding vector")
+            enrich(docs)
             logger.info("Indexing")
             bulk(client, docs, request_timeout=60)
             logger.info(f'{docs_indexed} documents indexed')
             docs = []
             names = []
     if len(docs) > 0:
+        logger.info("Embedding vector")
+        enrich(docs)
+        logger.info("Indexing")
         bulk(client, docs, request_timeout=60)
         logger.info(f'{docs_indexed} documents indexed')
     return docs_indexed
